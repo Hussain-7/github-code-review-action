@@ -70,13 +70,19 @@ async function runGitHubReview() {
     const severityThreshold = core.getInput('severity-threshold') || 'warning';
     const target = core.getInput('target') || './src';
 
-    // Run review
+    // Get the PR repository directory (where the code to review is)
+    const prRepoDir = process.env.GITHUB_WORKSPACE || process.cwd();
+
+    core.info(`📂 Reviewing code in: ${prRepoDir}`);
+
+    // Run review on the PR code (not the review agent code!)
     core.info('⚙️  Running comprehensive code review...');
     const agent = new CodeReviewAgent({
       prContext,
       maxBudgetUsd: maxBudget,
       maxFiles: 50,
       severityThreshold: severityThreshold as 'info' | 'warning' | 'error' | 'critical',
+      cwd: prRepoDir, // Point to the PR repository, not /tmp/review-agent
     });
 
     const result = await agent.review(target);
@@ -86,12 +92,17 @@ async function runGitHubReview() {
     core.info(`   Issues: ${result.stats.totalIssues}`);
     core.info(`   Cost: $${result.stats.totalCostUsd.toFixed(4)}`);
 
-    // Generate and save reports
+    // Generate and save reports in the PR repo directory (for artifact upload)
     const markdown = exportResults(result, 'markdown');
     const json = exportResults(result, 'json');
 
-    fs.writeFileSync('review-report.md', markdown);
-    fs.writeFileSync('review-result.json', json);
+    const reportMdPath = `${prRepoDir}/review-report.md`;
+    const reportJsonPath = `${prRepoDir}/review-result.json`;
+
+    fs.writeFileSync(reportMdPath, markdown);
+    fs.writeFileSync(reportJsonPath, json);
+
+    core.info(`📄 Reports saved to: ${prRepoDir}/`);
 
     // Set outputs
     core.setOutput('status', result.status);

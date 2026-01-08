@@ -58,16 +58,16 @@ jobs:
           npm install -g tsx
 
       - name: Run AI Code Review
-        working-directory: /tmp/review-agent
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
           INPUT_TARGET: './src'
           INPUT_MAX-BUDGET: '5.0'
           INPUT_SEVERITY-THRESHOLD: 'warning'
           INPUT_COMMENT-ON-PR: 'true'
           INPUT_FAIL-ON-CRITICAL: 'true'
-        run: npm run github-review
+        run: cd /tmp/review-agent && npm run github-review
 
       - name: Upload Review Report
         if: always()
