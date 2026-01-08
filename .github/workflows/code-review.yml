@@ -1,0 +1,66 @@
+name: AI Code Review
+
+# Trigger on pull requests
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  # Optionally trigger on PR comments
+  issue_comment:
+    types: [created]
+
+jobs:
+  code-review:
+    # Only run on PR comments that contain @agent-review
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       contains(github.event.comment.body, '@agent-review'))
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # For PR comments, checkout the PR branch
+          ref: ${{ github.event.pull_request.head.sha || github.event.issue.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code CLI
+        run: |
+          npm install -g @anthropic-ai/claude-code
+
+      - name: Run AI Code Review
+        uses: ./
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          target: '.'
+          model: 'claude-sonnet-4.5-20250929'
+          max-budget: '5.0'
+          max-files: '50'
+          severity-threshold: 'warning'
+          output-format: 'markdown'
+          fail-on-critical: 'true'
+          fail-on-error: 'false'
+          comment-on-pr: 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Review Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-review-report
+          path: code-review-report.md
+          retention-days: 30

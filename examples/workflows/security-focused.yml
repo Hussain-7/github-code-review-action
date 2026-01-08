@@ -1,0 +1,26 @@
+# Example: Security-focused review with strict settings
+name: Security Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  security-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Security Code Review
+        uses: your-org/code-review-agent@v1
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: 'claude-opus-4.5-20251101'  # Use most capable model
+          severity-threshold: 'critical'      # Only report critical issues
+          fail-on-critical: 'true'            # Fail if critical issues found
+          max-budget: '10.0'                  # Higher budget for thorough review
+          include-patterns: '**/*.ts,**/*.js,**/*.py'
+          exclude-patterns: '**/*.test.ts,**/*.spec.js'
+          comment-on-pr: 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
