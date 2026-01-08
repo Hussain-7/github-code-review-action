@@ -67,7 +67,10 @@ export class Logger {
     fs.appendFileSync(this.auditLogPath, `${JSON.stringify(logEntry)}\n`);
   }
 
-  success(_message: string): void {}
+  success(message: string): void {
+    // biome-ignore lint/suspicious/noConsoleLog: CLI output is intentional
+    console.log(`\u2713 ${message}`);
+  }
 
   getAuditLogPath(): string | undefined {
     return this.auditLogPath;

@@ -8,7 +8,7 @@ dotenv.config();
 /**
  * Default configuration values
  */
-const DEFAULT_CONFIG: Required<Omit<ReviewConfig, 'rules'>> = {
+const DEFAULT_CONFIG: Required<Omit<ReviewConfig, 'rules' | 'prContext'>> = {
   maxFiles: Number.parseInt(process.env.MAX_FILES_PER_REVIEW || '50', 10),
   maxBudgetUsd: Number.parseFloat(process.env.MAX_BUDGET_USD || '5.0'),
   model: process.env.MODEL || 'claude-sonnet-4.5-20250929',

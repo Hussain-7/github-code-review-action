@@ -10,7 +10,6 @@ import * as github from '@actions/github';
 import { CodeReviewAgent } from './agents/code-reviewer';
 import type { ReviewConfig, ReviewResult } from './types';
 import { exportResults } from './utils/formatter';
-import { logger } from './utils/logger';
 
 async function run(): Promise<void> {
   try {
@@ -44,7 +43,7 @@ async function run(): Promise<void> {
       model,
       maxBudgetUsd: maxBudget,
       maxFiles,
-      severityThreshold: severityThreshold as any,
+      severityThreshold: severityThreshold as 'info' | 'warning' | 'error' | 'critical',
       includePatterns,
       verbose: false,
     };
@@ -63,7 +62,7 @@ async function run(): Promise<void> {
     const result = await agent.review(target);
 
     // Generate report
-    const reportContent = exportResults(result, outputFormat as any);
+    const reportContent = exportResults(result, outputFormat as 'json' | 'markdown' | 'console');
     const reportPath = path.join(process.cwd(), 'code-review-report.md');
     fs.writeFileSync(reportPath, reportContent);
 

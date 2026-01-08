@@ -2,6 +2,8 @@ import { type Options, type SDKMessage, query } from '@anthropic-ai/claude-agent
 import { buildConfig, validateConfig } from '../config';
 import { defaultHooks } from '../hooks';
 import type {
+  EdgeCase,
+  ImpactAnalysis,
   IssueSeverity,
   ReviewCategory,
   ReviewConfig,
@@ -10,6 +12,7 @@ import type {
   ReviewStats,
 } from '../types';
 import { logger } from '../utils/logger';
+import { extractPRContextFromGit, loadReviewPrompt } from '../utils/prompt-loader';
 
 /**
  * Main Code Review Agent
@@ -32,6 +35,18 @@ export class CodeReviewAgent {
     logger.info(`Starting code review for: ${target}`);
 
     try {
+      // Extract PR context from git if not provided
+      if (!this.config.prContext && this.config.cwd) {
+        const gitContext = await extractPRContextFromGit(this.config.cwd);
+        if (gitContext) {
+          this.config.prContext = gitContext;
+          logger.info('Extracted PR context from git', {
+            branch: gitContext.branch,
+            changedFiles: gitContext.changedFiles?.length,
+          });
+        }
+      }
+
       const prompt = this.buildReviewPrompt(target);
       const options = this.buildAgentOptions();
 
@@ -41,6 +56,13 @@ export class CodeReviewAgent {
       let resultMessage = '';
       let totalCostUsd = 0;
       let durationMs = 0;
+      let prIntent: string | undefined = undefined;
+      let impactAnalysis: ImpactAnalysis | undefined = undefined;
+      let edgeCases: EdgeCase[] = [];
+      let missingTests: string[] = [];
+      let missingDocumentation: string[] = [];
+      let positives: string[] = [];
+      let recommendations: string[] = [];
 
       // Execute the review using Claude Agent SDK
       for await (const message of query({ prompt, options })) {
@@ -65,17 +87,31 @@ export class CodeReviewAgent {
         }
       }
 
-      // Parse the review results
+      // Parse the comprehensive review results
       const parsedResults = this.parseReviewResults(resultMessage);
       issues.push(...parsedResults.issues);
       filesReviewed.push(...parsedResults.filesReviewed);
       filesSkipped.push(...parsedResults.filesSkipped);
+      prIntent = parsedResults.prIntent;
+      impactAnalysis = parsedResults.impactAnalysis;
+      edgeCases = parsedResults.edgeCases || [];
+      missingTests = parsedResults.missingTests || [];
+      missingDocumentation = parsedResults.missingDocumentation || [];
+      positives = parsedResults.positives || [];
+      recommendations = parsedResults.recommendations || [];
 
       // Build the final result
       const result: ReviewResult = {
         status: this.determineStatus(issues),
-        summary: this.buildSummary(issues, filesReviewed),
+        summary: this.buildSummary(issues, filesReviewed, prIntent),
+        prIntent,
+        impactAnalysis,
         issues: this.filterIssuesBySeverity(issues),
+        edgeCases,
+        missingTests,
+        missingDocumentation,
+        positives,
+        recommendations,
         filesReviewed,
         filesSkipped,
         stats: this.buildStats(issues, filesReviewed, totalCostUsd, durationMs),
@@ -91,6 +127,7 @@ export class CodeReviewAgent {
       logger.info('Code review completed', {
         totalIssues: result.stats.totalIssues,
         filesReviewed: result.stats.totalFiles,
+        prIntent: prIntent ? 'captured' : 'not found',
       });
 
       return result;
@@ -101,61 +138,19 @@ export class CodeReviewAgent {
   }
 
   /**
-   * Builds the prompt for the code review agent
+   * Builds the comprehensive review prompt
    */
   private buildReviewPrompt(target: string): string {
     const rules = this.config.rules || [];
-    const enabledRules = rules.filter((r) => r.enabled);
 
-    const rulesDescription = enabledRules
-      .map((rule) => {
-        return `- [${rule.severity.toUpperCase()}] ${rule.name}: ${rule.description} (ID: ${rule.id})`;
-      })
-      .join('\n');
-
-    return `You are an expert code reviewer. Your task is to perform a comprehensive code review on the following target: "${target}"
-
-REVIEW GUIDELINES:
-1. Analyze code quality, security, performance, and best practices
-2. Identify bugs, potential issues, and areas for improvement
-3. Focus on the following rules:
-
-${rulesDescription}
-
-INSTRUCTIONS:
-1. Use the Read, Glob, and Grep tools to explore the codebase
-2. Focus on files matching these patterns: ${this.config.includePatterns?.join(', ')}
-3. Exclude files matching these patterns: ${this.config.excludePatterns?.join(', ')}
-4. Review up to ${this.config.maxFiles} files maximum
-5. For each issue found, provide:
-   - Rule ID that was violated
-   - Severity level (critical, error, warning, info)
-   - File path and line number
-   - Clear description of the issue
-   - Suggested fix if applicable
-   - Code snippet showing the problematic code
-
-OUTPUT FORMAT:
-Please provide your findings in the following JSON format:
-
-{
-  "issues": [
-    {
-      "ruleId": "security-no-hardcoded-secrets",
-      "severity": "critical",
-      "category": "security",
-      "filePath": "src/config.ts",
-      "line": 10,
-      "message": "Hardcoded API key detected",
-      "suggestion": "Use environment variables instead",
-      "snippet": "const API_KEY = 'sk-12345';"
-    }
-  ],
-  "filesReviewed": ["src/config.ts", "src/utils.ts"],
-  "filesSkipped": ["node_modules/package.json"]
-}
-
-Begin the code review now.`;
+    return loadReviewPrompt(
+      target,
+      rules,
+      this.config.prContext,
+      this.config.includePatterns,
+      this.config.excludePatterns,
+      this.config.maxFiles
+    );
   }
 
   /**
@@ -163,7 +158,7 @@ Begin the code review now.`;
    */
   private buildAgentOptions(): Options {
     return {
-      allowedTools: ['Read', 'Glob', 'Grep'],
+      allowedTools: ['Read', 'Glob', 'Grep', 'Bash'],
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
       model: this.config.model,
@@ -191,12 +186,19 @@ Begin the code review now.`;
   }
 
   /**
-   * Parses the review results from the agent's response
+   * Parses the comprehensive review results from the agent's response
    */
   private parseReviewResults(resultMessage: string): {
     issues: ReviewIssue[];
     filesReviewed: string[];
     filesSkipped: string[];
+    prIntent?: string;
+    impactAnalysis?: ImpactAnalysis;
+    edgeCases?: EdgeCase[];
+    missingTests?: string[];
+    missingDocumentation?: string[];
+    positives?: string[];
+    recommendations?: string[];
   } {
     try {
       // Try to extract JSON from the result message
@@ -207,6 +209,13 @@ Begin the code review now.`;
           issues: parsed.issues || [],
           filesReviewed: parsed.filesReviewed || [],
           filesSkipped: parsed.filesSkipped || [],
+          prIntent: parsed.prIntent,
+          impactAnalysis: parsed.impactAnalysis,
+          edgeCases: parsed.edgeCases,
+          missingTests: parsed.missingTests,
+          missingDocumentation: parsed.missingDocumentation,
+          positives: parsed.positives,
+          recommendations: parsed.recommendations,
         };
       }
     } catch (_error) {
@@ -257,12 +266,18 @@ Begin the code review now.`;
   /**
    * Builds a summary message
    */
-  private buildSummary(issues: ReviewIssue[], filesReviewed: string[]): string {
+  private buildSummary(issues: ReviewIssue[], filesReviewed: string[], prIntent?: string): string {
     const criticalCount = issues.filter((i) => i.severity === 'critical').length;
     const errorCount = issues.filter((i) => i.severity === 'error').length;
     const warningCount = issues.filter((i) => i.severity === 'warning').length;
 
-    let summary = `Reviewed ${filesReviewed.length} file(s). `;
+    let summary = '';
+
+    if (prIntent) {
+      summary += `PR Intent: ${prIntent}\n\n`;
+    }
+
+    summary += `Reviewed ${filesReviewed.length} file(s). `;
     summary += `Found ${issues.length} issue(s): `;
     summary += `${criticalCount} critical, ${errorCount} errors, ${warningCount} warnings.`;
 

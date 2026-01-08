@@ -63,7 +63,7 @@ ${
 
   // Add PR context section if available
   if (prContextSection) {
-    promptTemplate = prContextSection + '\n' + promptTemplate;
+    promptTemplate = `${prContextSection}\n${promptTemplate}`;
   }
 
   return promptTemplate;
@@ -87,9 +87,7 @@ export async function extractPRContextFromGit(cwd: string): Promise<PRContext | 
 
     // Get current branch
     try {
-      const branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd })
-        .toString()
-        .trim();
+      const branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd }).toString().trim();
       prContext.branch = branch;
     } catch {
       // Ignore
@@ -112,7 +110,7 @@ export async function extractPRContextFromGit(cwd: string): Promise<PRContext | 
             break;
           }
         } catch {
-          continue;
+          // Try next base branch
         }
       }
     } catch {
@@ -121,9 +119,7 @@ export async function extractPRContextFromGit(cwd: string): Promise<PRContext | 
 
     // Get last commit message as PR description fallback
     try {
-      const commitMessage = execSync('git log -1 --pretty=%B', { cwd })
-        .toString()
-        .trim();
+      const commitMessage = execSync('git log -1 --pretty=%B', { cwd }).toString().trim();
       if (commitMessage && !prContext.description) {
         prContext.description = commitMessage;
       }
