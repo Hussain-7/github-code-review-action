@@ -110,7 +110,7 @@ async function runGitHubReview() {
     core.setOutput('critical-count', result.stats.issuesBySeverity.critical);
     core.setOutput('error-count', result.stats.issuesBySeverity.error);
     core.setOutput('warning-count', result.stats.issuesBySeverity.warning);
-    core.setOutput('report-file', 'review-report.md');
+    core.setOutput('report-file', reportMdPath);
 
     // Post comment
     const commentOnPr = core.getInput('comment-on-pr') !== 'false';
