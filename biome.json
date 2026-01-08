@@ -140,7 +140,8 @@
       "coverage/**",
       "*.config.js",
       "*.config.ts",
-      ".github/**"
+      ".github/**",
+      "review.ts"
     ]
   },
   "formatter": {

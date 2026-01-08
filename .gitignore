@@ -20,6 +20,11 @@ logs/
 npm-debug.log*
 audit.log
 
+# Review reports
+reports/
+review-*.json
+review-*.md
+
 # IDE
 .vscode/
 .idea/

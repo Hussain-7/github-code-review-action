@@ -37,11 +37,37 @@ A scalable, extensible code review agent powered by Claude Agent SDK. Performs a
 
 ## Quick Start
 
+### Local Review (Fastest Way)
+
+```bash
+# Clone this repository
+git clone https://github.com/your-org/code-review-agent.git
+cd code-review-agent
+
+# Install dependencies
+pnpm install
+
+# Set API key in .env file
+cp .env.example .env
+# Edit .env and add your ANTHROPIC_API_KEY
+
+# Review any repository
+pnpm review /path/to/your/repo
+
+# Review with custom budget
+pnpm review /path/to/repo --budget 10
+
+# Review current directory
+pnpm review .
+```
+
+### CLI Tool
+
 ```bash
 # Install Claude Code CLI (required)
 npm install -g @anthropic-ai/claude-code
 
-# Install Code Review Agent
+# Install globally
 npm install -g code-review-agent
 
 # Set API key
@@ -104,56 +130,16 @@ jobs:
           npm install -g @anthropic-ai/claude-code
           npm install -g code-review-agent
 
-      - name: Run Review with PR Context
-        uses: actions/github-script@v7
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      - name: Run AI Code Review
+        uses: your-org/code-review-agent@v1
         with:
-          script: |
-            const { CodeReviewAgent, exportResults } = require('code-review-agent');
-
-            // Extract PR context
-            const { data: pr } = await github.rest.pulls.get({
-              ...context.repo,
-              pull_number: context.payload.pull_request.number
-            });
-
-            const { data: files } = await github.rest.pulls.listFiles({
-              ...context.repo,
-              pull_number: context.payload.pull_request.number
-            });
-
-            const prContext = {
-              title: pr.title,
-              description: pr.body || '',
-              number: pr.number,
-              author: pr.user.login,
-              branch: pr.head.ref,
-              baseBranch: pr.base.ref,
-              changedFiles: files.map(f => f.filename)
-            };
-
-            // Run review
-            const agent = new CodeReviewAgent({
-              prContext,
-              maxBudgetUsd: 5.0,
-              severityThreshold: 'warning',
-            });
-
-            const result = await agent.review('./src');
-
-            // Post comment
-            const markdown = exportResults(result, 'markdown');
-            await github.rest.issues.createComment({
-              ...context.repo,
-              issue_number: pr.number,
-              body: `## 🤖 AI Code Review\n\n${markdown}`
-            });
-
-            // Fail on critical issues
-            if (result.stats.issuesBySeverity.critical > 0) {
-              core.setFailed('Critical issues found');
-            }
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          target: './src'
+          severity-threshold: 'warning'
+          fail-on-critical: 'true'
+          comment-on-pr: 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Report
         if: always()
@@ -177,10 +163,17 @@ Create a test PR to see it in action!
 
 1. **Automatic Reviews**: Runs on every PR open/update
 2. **Manual Trigger**: Comment `@agent-review` on any PR
-3. **Full Context**: Agent understands PR intent, changed files, and project impact
-4. **Smart Analysis**: Reviews not just the changes, but how they affect the entire project
-5. **PR Comments**: Posts detailed review results as a comment
-6. **Artifacts**: Saves reports for later reference
+3. **Automatic PR Context Extraction**: The action automatically extracts:
+   - ✅ PR title and description
+   - ✅ PR number and author
+   - ✅ Changed files list (via GitHub API)
+   - ✅ Branch information
+4. **Full Context**: Agent understands PR intent, changed files, and project impact
+5. **Smart Analysis**: Reviews not just the changes, but how they affect the entire project
+6. **PR Comments**: Posts detailed review results as a comment
+7. **Artifacts**: Saves reports for later reference
+
+**Note**: The GitHub Action automatically passes full PR context to the agent, so it knows exactly what changed and what the PR is trying to achieve!
 
 ### What the Agent Reviews
 
@@ -623,9 +616,32 @@ const agent = new CodeReviewAgent({
 const result = await agent.review('.');
 ```
 
-## Development
+## Local Development & Testing
 
-### Setup
+### Quick Review of Any Repository
+
+```bash
+# Review any repository locally
+pnpm review /path/to/repository
+
+# Review specific directory
+pnpm review ./src
+
+# Review with higher budget for deeper analysis
+pnpm review /path/to/repo --budget 10
+
+# Examples:
+pnpm review .                                    # Current directory
+pnpm review ../polaris                          # Another project
+pnpm review /absolute/path/to/project          # Absolute path
+```
+
+The review generates:
+- Detailed JSON report in `reports/review-{timestamp}.json`
+- Markdown report in `reports/review-{timestamp}.md`
+- Console output with top issues and recommendations
+
+### Development Setup
 
 ```bash
 # Clone repository
@@ -633,10 +649,10 @@ git clone https://github.com/your-org/code-review-agent.git
 cd code-review-agent
 
 # Install dependencies
-npm install
+pnpm install
 
 # Build
-npm run build
+pnpm build
 ```
 
 ### Code Quality
@@ -645,16 +661,16 @@ We use Biome for linting and formatting:
 
 ```bash
 # Check code
-npm run check
+pnpm check
 
 # Fix linting issues
-npm run lint:fix
+pnpm lint:fix
 
 # Format code
-npm run format
+pnpm format
 
 # CI checks (no auto-fix)
-npm run ci
+pnpm ci
 ```
 
 ### Project Structure

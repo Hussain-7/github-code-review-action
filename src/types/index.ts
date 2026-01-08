@@ -40,6 +40,21 @@ export interface PRContext {
   changedFiles?: string[];
   /** Base branch (e.g., 'main', 'develop') */
   baseBranch?: string;
+  /** File diffs showing actual changes */
+  fileDiffs?: FileDiff[];
+}
+
+export interface FileDiff {
+  /** File path */
+  filename: string;
+  /** File status (added, modified, removed, renamed) */
+  status: string;
+  /** Number of additions */
+  additions: number;
+  /** Number of deletions */
+  deletions: number;
+  /** Patch/diff content */
+  patch?: string;
 }
 
 export type IssueSeverity = 'critical' | 'error' | 'warning' | 'info';

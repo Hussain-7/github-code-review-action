@@ -8,7 +8,7 @@ import * as path from 'node:path';
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import { CodeReviewAgent } from './agents/code-reviewer';
-import type { ReviewConfig, ReviewResult } from './types';
+import type { PRContext, ReviewConfig, ReviewResult } from './types';
 import { exportResults } from './utils/formatter';
 
 async function run(): Promise<void> {
@@ -38,7 +38,65 @@ async function run(): Promise<void> {
     // Set API key in environment
     process.env.ANTHROPIC_API_KEY = apiKey;
 
-    // Build configuration
+    // Extract PR context from GitHub event
+    let prContext: PRContext | undefined;
+    if (github.context.payload.pull_request) {
+      const pr = github.context.payload.pull_request;
+
+      core.info('Extracting PR context...');
+
+      // Get changed files and diffs from GitHub API
+      const token = process.env.GITHUB_TOKEN || core.getInput('github-token');
+      let changedFiles: string[] = [];
+      let fileDiffs: Array<{
+        filename: string;
+        status: string;
+        additions: number;
+        deletions: number;
+        patch?: string;
+      }> = [];
+
+      if (token) {
+        try {
+          const octokit = github.getOctokit(token);
+          const { data: files } = await octokit.rest.pulls.listFiles({
+            ...github.context.repo,
+            pull_number: pr.number,
+          });
+
+          changedFiles = files.map((f) => f.filename);
+          fileDiffs = files.map((f) => ({
+            filename: f.filename,
+            status: f.status,
+            additions: f.additions,
+            deletions: f.deletions,
+            patch: f.patch,
+          }));
+
+          core.info(`Extracted ${fileDiffs.length} file diffs`);
+        } catch (error) {
+          core.warning(`Failed to fetch changed files: ${error}`);
+        }
+      }
+
+      prContext = {
+        title: pr.title,
+        description: pr.body || '',
+        number: pr.number,
+        author: pr.user?.login || '',
+        branch: pr.head?.ref || '',
+        baseBranch: pr.base?.ref || '',
+        changedFiles,
+        fileDiffs,
+      };
+
+      core.info(`PR: #${prContext.number} - ${prContext.title}`);
+      core.info(
+        `Changed files: ${changedFiles.length} (+${fileDiffs.reduce((sum, f) => sum + f.additions, 0)} -${fileDiffs.reduce((sum, f) => sum + f.deletions, 0)} lines)`
+      );
+    }
+
+    // Build configuration with PR context
     const config: Partial<ReviewConfig> = {
       model,
       maxBudgetUsd: maxBudget,
@@ -46,6 +104,7 @@ async function run(): Promise<void> {
       severityThreshold: severityThreshold as 'info' | 'warning' | 'error' | 'critical',
       includePatterns,
       verbose: false,
+      prContext,
     };
 
     if (excludePatterns.length > 0) {
@@ -57,7 +116,7 @@ async function run(): Promise<void> {
     core.info(`Model: ${model}`);
     core.info(`Max Budget: $${maxBudget}`);
 
-    // Create and run the agent
+    // Create and run the agent with PR context
     const agent = new CodeReviewAgent(config);
     const result = await agent.review(target);
 
