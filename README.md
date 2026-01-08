@@ -6,6 +6,7 @@ A scalable, extensible code review agent powered by Claude Agent SDK. Performs a
 
 - [Features](#features)
 - [Quick Start](#quick-start)
+- [Add to Your Repository](#add-to-your-repository)
 - [Installation](#installation)
 - [Usage](#usage)
   - [CLI](#cli)
@@ -21,13 +22,16 @@ A scalable, extensible code review agent powered by Claude Agent SDK. Performs a
 
 ## Features
 
+- **Holistic PR Review**: Analyzes not just changed files, but project-wide impact, breaking changes, and edge cases
+- **PR Context Aware**: Understands PR intent from title/description to ensure changes achieve their goals
 - **Comprehensive Analysis**: Security, performance, bugs, best practices, maintainability, documentation
+- **Impact Analysis**: Identifies breaking changes, affected files, integration impacts, and security implications
 - **Extensible Rules**: 20+ default rules, easy to add custom rules
 - **Multiple Interfaces**: CLI, Node.js library, GitHub Action
 - **GitHub Integration**: Auto-review PRs, trigger with `@agent-review` comment
 - **Cost Control**: Budget limits and file count restrictions
 - **Flexible Filtering**: Include/exclude patterns, severity thresholds
-- **Multiple Outputs**: Console, JSON, Markdown formats
+- **Multiple Outputs**: Console, JSON, Markdown formats with detailed insights
 - **Audit Logging**: Track all changes and tool usage
 - **Type Safe**: Full TypeScript support
 
@@ -46,6 +50,148 @@ export ANTHROPIC_API_KEY=your-api-key
 # Review code
 code-review-agent review ./src
 ```
+
+## Add to Your Repository
+
+Want to add AI code review to your project? Here's how:
+
+### 3-Step Setup
+
+#### Step 1: Add API Key Secret
+
+1. Go to your repository on GitHub
+2. **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
+3. Add:
+   - Name: `ANTHROPIC_API_KEY`
+   - Value: Your API key from https://console.anthropic.com/
+
+#### Step 2: Create Workflow File
+
+Create `.github/workflows/ai-code-review.yml`:
+
+```yaml
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+jobs:
+  review:
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event.issue.pull_request && contains(github.event.comment.body, '@agent-review'))
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          npm install -g code-review-agent
+
+      - name: Run Review with PR Context
+        uses: actions/github-script@v7
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          script: |
+            const { CodeReviewAgent, exportResults } = require('code-review-agent');
+
+            // Extract PR context
+            const { data: pr } = await github.rest.pulls.get({
+              ...context.repo,
+              pull_number: context.payload.pull_request.number
+            });
+
+            const { data: files } = await github.rest.pulls.listFiles({
+              ...context.repo,
+              pull_number: context.payload.pull_request.number
+            });
+
+            const prContext = {
+              title: pr.title,
+              description: pr.body || '',
+              number: pr.number,
+              author: pr.user.login,
+              branch: pr.head.ref,
+              baseBranch: pr.base.ref,
+              changedFiles: files.map(f => f.filename)
+            };
+
+            // Run review
+            const agent = new CodeReviewAgent({
+              prContext,
+              maxBudgetUsd: 5.0,
+              severityThreshold: 'warning',
+            });
+
+            const result = await agent.review('./src');
+
+            // Post comment
+            const markdown = exportResults(result, 'markdown');
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: pr.number,
+              body: `## 🤖 AI Code Review\n\n${markdown}`
+            });
+
+            // Fail on critical issues
+            if (result.stats.issuesBySeverity.critical > 0) {
+              core.setFailed('Critical issues found');
+            }
+
+      - name: Upload Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-review-report
+          path: review-report.md
+```
+
+#### Step 3: Push and Test
+
+```bash
+git add .github/workflows/ai-code-review.yml
+git commit -m "Add AI code review workflow"
+git push
+```
+
+Create a test PR to see it in action!
+
+### How It Works
+
+1. **Automatic Reviews**: Runs on every PR open/update
+2. **Manual Trigger**: Comment `@agent-review` on any PR
+3. **Full Context**: Agent understands PR intent, changed files, and project impact
+4. **Smart Analysis**: Reviews not just the changes, but how they affect the entire project
+5. **PR Comments**: Posts detailed review results as a comment
+6. **Artifacts**: Saves reports for later reference
+
+### What the Agent Reviews
+
+- **Changed files** - Direct modifications in the PR
+- **Impact on project** - How changes affect other files
+- **Breaking changes** - API changes, signature modifications
+- **Edge cases** - Scenarios that need handling
+- **Security** - Vulnerabilities introduced
+- **Tests** - Missing test coverage
+- **Documentation** - Required doc updates
+- **Overall quality** - Code quality, best practices
 
 ## Installation
 
