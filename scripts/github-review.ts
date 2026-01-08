@@ -6,7 +6,7 @@
 
 import * as core from '@actions/core';
 import * as github from '@actions/github';
-import { CodeReviewAgent, exportResults } from '../src';
+import { CodeReviewAgent, exportResults } from '../dist';
 import * as fs from 'node:fs';
 
 async function runGitHubReview() {

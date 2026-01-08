@@ -55,6 +55,7 @@ jobs:
           cd /tmp/review-agent
           npm install
           npm run build
+          npm install -g tsx
 
       - name: Run AI Code Review
         working-directory: /tmp/review-agent
