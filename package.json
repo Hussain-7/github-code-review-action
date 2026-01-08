@@ -8,6 +8,7 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "review": "tsx review.ts",
+    "github-review": "tsx scripts/github-review.ts",
     "cli": "tsx src/cli.ts",
     "test": "jest",
     "lint": "biome lint ./src",

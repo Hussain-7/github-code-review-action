@@ -141,7 +141,8 @@
       "*.config.js",
       "*.config.ts",
       ".github/**",
-      "review.ts"
+      "review.ts",
+      "scripts/**"
     ]
   },
   "formatter": {

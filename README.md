@@ -79,85 +79,85 @@ code-review-agent review ./src
 
 ## Add to Your Repository
 
-Want to add AI code review to your project? Here's how:
+Want to add AI code review to ANY of your projects? Here's the complete process:
 
 ### 3-Step Setup
 
-#### Step 1: Add API Key Secret
+#### Step 1: Add API Key Secret (1 minute)
 
-1. Go to your repository on GitHub
+1. Go to **your target repository** on GitHub (e.g., your Polaris repo)
 2. **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
 3. Add:
    - Name: `ANTHROPIC_API_KEY`
    - Value: Your API key from https://console.anthropic.com/
+4. Click **Add secret**
 
-#### Step 2: Create Workflow File
+#### Step 2: Copy Workflow Template (2 minutes)
 
-Create `.github/workflows/ai-code-review.yml`:
+**📋 Use the ready-to-use template**: [`workflow-template.yml`](./workflow-template.yml)
 
-```yaml
-name: AI Code Review
-
-on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-  issue_comment:
-    types: [created]
-
-jobs:
-  review:
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event.issue.pull_request && contains(github.event.comment.body, '@agent-review'))
-
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Dependencies
-        run: |
-          npm install -g @anthropic-ai/claude-code
-          npm install -g code-review-agent
-
-      - name: Run AI Code Review
-        uses: your-org/code-review-agent@v1
-        with:
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          target: './src'
-          severity-threshold: 'warning'
-          fail-on-critical: 'true'
-          comment-on-pr: 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: code-review-report
-          path: review-report.md
+**Option A - Download Directly:**
+```bash
+mkdir -p .github/workflows
+curl -o .github/workflows/ai-code-review.yml \
+  https://raw.githubusercontent.com/Hussain-7/code-review-agent/main/workflow-template.yml
 ```
+
+**Option B - Copy Manually:**
+1. Open [`workflow-template.yml`](https://github.com/Hussain-7/code-review-agent/blob/main/workflow-template.yml)
+2. Copy the entire file
+3. Create `.github/workflows/ai-code-review.yml` in your repository
+4. Paste the content
+
+**The template includes:**
+- ✅ Automatic PR context extraction (title, description, diffs)
+- ✅ Code review with full project impact analysis
+- ✅ PR comment with detailed findings
+- ✅ Artifact upload for reports
+- ✅ No inline scripts - all logic in TypeScript files
 
 #### Step 3: Push and Test
 
+In your target repository (e.g., Polaris):
+
 ```bash
+# Create the workflow directory if it doesn't exist
+mkdir -p .github/workflows
+
+# Download the template
+curl -o .github/workflows/ai-code-review.yml \
+  https://raw.githubusercontent.com/Hussain-7/code-review-agent/main/workflow-template.yml
+
+# Or manually create the file and copy the content from workflow-template.yml
+
+# Commit and push
 git add .github/workflows/ai-code-review.yml
 git commit -m "Add AI code review workflow"
 git push
 ```
 
 Create a test PR to see it in action!
+
+### 📋 Complete Setup Commands for Your Repo
+
+```bash
+# Navigate to your repository (replace with your path)
+cd /path/to/your/repository
+
+# Download the workflow template
+mkdir -p .github/workflows
+curl -o .github/workflows/ai-code-review.yml \
+  https://raw.githubusercontent.com/Hussain-7/code-review-agent/main/workflow-template.yml
+
+# Commit and push
+git add .github/workflows/ai-code-review.yml
+git commit -m "Add AI code review workflow"
+git push
+
+# Go to GitHub Settings → Secrets → Add ANTHROPIC_API_KEY
+
+# Create a test PR - Done! Agent reviews automatically!
+```
 
 ### How It Works
 

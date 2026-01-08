@@ -1,0 +1,79 @@
+# AI Code Review Workflow Template
+#
+# Copy this file to your repository as: .github/workflows/ai-code-review.yml
+#
+# Requirements:
+# 1. Add ANTHROPIC_API_KEY to your repository secrets (Settings → Secrets → Actions)
+# 2. That's it!
+#
+# The agent automatically extracts:
+# - PR title, description, number, author
+# - Changed files with exact diffs (lines added/removed)
+# - Branch information
+# - Then analyzes project-wide impact
+
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+jobs:
+  code-review:
+    # Run on PR events OR when @agent-review is commented
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event.issue.pull_request && contains(github.event.comment.body, '@agent-review'))
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout PR Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Clone and Setup Code Review Agent
+        run: |
+          git clone https://github.com/Hussain-7/code-review-agent.git /tmp/review-agent
+          cd /tmp/review-agent
+          npm install
+          npm run build
+
+      - name: Run AI Code Review
+        working-directory: /tmp/review-agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TARGET: './src'
+          INPUT_MAX-BUDGET: '5.0'
+          INPUT_SEVERITY-THRESHOLD: 'warning'
+          INPUT_COMMENT-ON-PR: 'true'
+          INPUT_FAIL-ON-CRITICAL: 'true'
+        run: npm run github-review
+
+      - name: Upload Review Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-review-report
+          path: |
+            review-report.md
+            review-result.json
+          retention-days: 30
