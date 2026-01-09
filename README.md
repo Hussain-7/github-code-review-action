@@ -79,85 +79,75 @@ code-review-agent review ./src
 
 ## Add to Your Repository
 
-Want to add AI code review to ANY of your projects? Here's the complete process:
+Add AI code review to ANY of your repositories in **2 simple steps**:
 
-### 3-Step Setup
+### Step 1: Add API Key Secret (30 seconds)
 
-#### Step 1: Add API Key Secret (1 minute)
-
-1. Go to **your target repository** on GitHub (e.g., your Polaris repo)
+1. Go to your repository on GitHub
 2. **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
 3. Add:
    - Name: `ANTHROPIC_API_KEY`
    - Value: Your API key from https://console.anthropic.com/
-4. Click **Add secret**
 
-#### Step 2: Copy Workflow Template (2 minutes)
+### Step 2: Add Workflow File (1 minute)
 
-**📋 Use the ready-to-use template**: [`workflow-template.yml`](./workflow-template.yml)
+Create `.github/workflows/ai-code-review.yml` in your repository:
 
-**Option A - Download Directly:**
+```yaml
+name: AI Code Review
+
+on:
+  pull_request:
+  issue_comment:
+
+jobs:
+  code-review:
+    if: |
+      github.event_name == 'pull_request' ||
+      contains(github.event.comment.body, '@agent-review')
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: Hussain-7/github-code-review-action@v1
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+**📥 Quick copy:**
 ```bash
 mkdir -p .github/workflows
 curl -o .github/workflows/ai-code-review.yml \
-  https://raw.githubusercontent.com/Hussain-7/code-review-agent/main/workflow-template.yml
+  https://raw.githubusercontent.com/Hussain-7/github-code-review-action/main/workflow-template.yml
 ```
 
-**Option B - Copy Manually:**
-1. Open [`workflow-template.yml`](https://github.com/Hussain-7/code-review-agent/blob/main/workflow-template.yml)
-2. Copy the entire file
-3. Create `.github/workflows/ai-code-review.yml` in your repository
-4. Paste the content
+That's it! Create a PR and watch the AI review your code automatically! 🎉
 
-**The template includes:**
-- ✅ Automatic PR context extraction (title, description, diffs)
-- ✅ Code review with full project impact analysis
-- ✅ PR comment with detailed findings
-- ✅ Artifact upload for reports
-- ✅ No inline scripts - all logic in TypeScript files
+### Why This Is Fast
 
-#### Step 3: Push and Test
+**Old approach (50+ lines):**
+- Clone agent repository (~10s)
+- npm install (~40-50s)
+- Build (~10s)
+- Review (~2-3min)
+- **Total: ~3-4 minutes**
 
-In your target repository (e.g., Polaris):
+**New approach (3 steps!):**
+- Checkout PR (fetch-depth: 1) (~2s)
+- Run bundled action (~instant)
+- Review (PR diff only) (~1-2min)
+- **Total: ~1.5-2 minutes** ⚡
 
-```bash
-# Create the workflow directory if it doesn't exist
-mkdir -p .github/workflows
-
-# Download the template
-curl -o .github/workflows/ai-code-review.yml \
-  https://raw.githubusercontent.com/Hussain-7/code-review-agent/main/workflow-template.yml
-
-# Or manually create the file and copy the content from workflow-template.yml
-
-# Commit and push
-git add .github/workflows/ai-code-review.yml
-git commit -m "Add AI code review workflow"
-git push
-```
-
-Create a test PR to see it in action!
-
-### 📋 Complete Setup Commands for Your Repo
-
-```bash
-# Navigate to your repository (replace with your path)
-cd /path/to/your/repository
-
-# Download the workflow template
-mkdir -p .github/workflows
-curl -o .github/workflows/ai-code-review.yml \
-  https://raw.githubusercontent.com/Hussain-7/code-review-agent/main/workflow-template.yml
-
-# Commit and push
-git add .github/workflows/ai-code-review.yml
-git commit -m "Add AI code review workflow"
-git push
-
-# Go to GitHub Settings → Secrets → Add ANTHROPIC_API_KEY
-
-# Create a test PR - Done! Agent reviews automatically!
-```
+**50% faster!** And way simpler!
 
 ### How It Works
 

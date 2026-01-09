@@ -1,0 +1,48 @@
+name: 'AI Code Review Agent'
+description: 'AI-powered code review for pull requests with security, bug, and quality analysis using Claude'
+author: 'Hussain-7'
+
+branding:
+  icon: 'check-circle'
+  color: 'blue'
+
+inputs:
+  github-token:
+    description: 'GitHub token for API access and posting comments'
+    required: true
+    default: ${{ github.token }}
+
+  max-budget:
+    description: 'Maximum AI API budget in USD'
+    required: false
+    default: '5.0'
+
+  severity-threshold:
+    description: 'Minimum severity level to report (info, warning, error, critical)'
+    required: false
+    default: 'warning'
+
+  fail-on:
+    description: 'Fail CI when finding issues of this severity or higher (critical, error, warning, never)'
+    required: false
+    default: 'critical'
+
+outputs:
+  status:
+    description: 'Review status (success, partial, failure)'
+
+  total-issues:
+    description: 'Total number of issues found'
+
+  critical-count:
+    description: 'Number of critical severity issues found'
+
+  error-count:
+    description: 'Number of error severity issues found'
+
+  warning-count:
+    description: 'Number of warning severity issues found'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

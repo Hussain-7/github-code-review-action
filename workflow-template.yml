@@ -1,15 +1,12 @@
 # AI Code Review Workflow
 #
-# This workflow runs AI-powered code review on PRs using the code-review-agent
-# Automatically extracts PR context and analyzes project-wide impact
+# Simple, fast, drop-in code review using AI
+# Just copy this file and add your ANTHROPIC_API_KEY secret
 #
-# Requirements:
-# - ANTHROPIC_API_KEY secret must be set in repository settings
-#
-# Setup Instructions:
-# 1. Copy this file to: .github/workflows/ai-code-review.yml in your repository
-# 2. Add ANTHROPIC_API_KEY to repository secrets (Settings → Secrets → Actions)
-# 3. Push and create a PR - Done!
+# Setup:
+# 1. Add this file to: .github/workflows/ai-code-review.yml
+# 2. Add ANTHROPIC_API_KEY to repository secrets
+# 3. Create a PR - Done!
 
 name: AI Code Review
 
@@ -31,58 +28,19 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      issues: write
 
     steps:
       - name: Checkout PR Code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.event.issue.pull_request.head.sha }}
-          fetch-depth: 0
+          fetch-depth: 1  # Fast checkout for PR diff analysis
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
-
-      - name: Clone and Setup Code Review Agent
-        run: |
-          # Clone the code review agent repository
-          git clone https://github.com/Hussain-7/github-code-review-action.git /tmp/review-agent
-          cd /tmp/review-agent
-          npm install --legacy-peer-deps
-          npm install -g tsx
-          npm run build
-
-      - name: Run AI Code Review
+      - name: AI Code Review
+        uses: Hussain-7/github-code-review-action@v1
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_WORKSPACE: ${{ github.workspace }}
-          INPUT_TARGET: '.'
-          INPUT_MAX-BUDGET: '5.0'
-          INPUT_SEVERITY-THRESHOLD: 'warning'
-          INPUT_COMMENT-ON-PR: 'true'
-          INPUT_FAIL-ON-CRITICAL: 'true'
-        run: |
-          echo "📂 Verifying directories..."
-          echo "Current dir: $(pwd)"
-          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-          echo "PR code files:"
-          ls -la $GITHUB_WORKSPACE | head -20
-          echo ""
-          echo "🚀 Starting review..."
-          cd /tmp/review-agent && npm run github-review
-
-      - name: Upload Review Report
-        if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: code-review-report-${{ github.event.pull_request.number || github.event.issue.number }}
-          path: |
-            review-report.md
-            review-result.json
-          retention-days: 30
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          max-budget: '5.0'
+          severity-threshold: 'warning'
+          fail-on: 'critical'

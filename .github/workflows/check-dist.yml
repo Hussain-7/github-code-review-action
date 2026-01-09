@@ -1,0 +1,61 @@
+name: Check Dist
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+
+jobs:
+  check-dist:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Rebuild Bundle
+        run: npm run package
+
+      - name: Compare Dist
+        run: |
+          if [ -n "$(git status --porcelain dist/)" ]; then
+            echo "❌ dist/ is not up to date!"
+            echo ""
+            echo "The checked-in dist/ doesn't match the built output."
+            echo "Please run 'npm run package' locally and commit the changes."
+            echo ""
+            echo "Changed files:"
+            git status --porcelain dist/
+            echo ""
+            git diff dist/
+            exit 1
+          else
+            echo "✅ dist/ is up to date"
+          fi
+
+      - name: Verify Bundle Size
+        run: |
+          SIZE=$(stat -f%z dist/index.js 2>/dev/null || stat -c%s dist/index.js)
+          SIZE_MB=$((SIZE / 1024 / 1024))
+          echo "📦 Bundle size: ${SIZE_MB}MB"
+          if [ $SIZE_MB -gt 5 ]; then
+            echo "⚠️  Warning: Bundle is larger than 5MB"
+          else
+            echo "✅ Bundle size is acceptable"
+          fi

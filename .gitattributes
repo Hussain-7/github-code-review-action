@@ -1,0 +1,2 @@
+# Mark dist/ as generated code
+dist/** linguist-generated=true

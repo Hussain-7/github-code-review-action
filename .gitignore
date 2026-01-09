@@ -5,9 +5,21 @@ yarn.lock
 pnpm-lock.yaml
 
 # Build output
-dist/
+dist/*.d.ts
+dist/*.d.ts.map
+dist/*.js.map
+dist/agents/
+dist/config/
+dist/hooks/
+dist/types/
+dist/utils/
+dist/action-entry.*
+dist/cli.*
 build/
 *.tsbuildinfo
+
+# Keep bundled action (required for GitHub Actions)
+!dist/index.js
 
 # Environment variables
 .env
