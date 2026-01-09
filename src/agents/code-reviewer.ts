@@ -1,5 +1,4 @@
-import { type Options, query } from '@anthropic-ai/claude-agent-sdk';
-import { buildConfig, validateConfig } from '../config';
+import { query } from '@anthropic-ai/claude-agent-sdk';
 import type {
   EdgeCase,
   ImpactAnalysis,
@@ -8,21 +7,36 @@ import type {
   ReviewConfig,
   ReviewIssue,
   ReviewResult,
-  ReviewStats,
 } from '../types';
 import { logger } from '../utils/logger';
 
 /**
- * Main Code Review Agent
- * Simplified, reliable implementation based on proven working approach
+ * Code Review Agent
+ * Based on proven working minimal test approach
  */
 export class CodeReviewAgent {
   private config: ReviewConfig;
   private sessionId?: string;
 
   constructor(config: Partial<ReviewConfig> = {}) {
-    this.config = buildConfig(config);
-    validateConfig(this.config);
+    // Simple config - no complex buildConfig
+    this.config = {
+      model: config.model || 'claude-sonnet-4.5-20250929',
+      maxBudgetUsd: config.maxBudgetUsd || 5.0,
+      maxFiles: config.maxFiles || 50,
+      severityThreshold: config.severityThreshold || 'warning',
+      cwd: config.cwd || process.cwd(),
+      verbose: config.verbose,
+      prContext: config.prContext,
+      includePatterns: config.includePatterns,
+      excludePatterns: config.excludePatterns,
+      rules: config.rules,
+    };
+
+    // Validate API key
+    if (!process.env.ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY environment variable is required');
+    }
   }
 
   async review(target = '.'): Promise<ReviewResult> {
@@ -31,13 +45,21 @@ export class CodeReviewAgent {
 
     try {
       const prompt = this.buildPrompt(target);
-      const options = this.buildOptions();
-
       let resultText = '';
       let totalCostUsd = 0;
       let durationMs = 0;
 
-      for await (const message of query({ prompt, options })) {
+      // Use exact same approach as working minimal test
+      for await (const message of query({
+        prompt,
+        options: {
+          allowedTools: ['Read', 'Glob', 'Grep'],
+          permissionMode: 'bypassPermissions',
+          allowDangerouslySkipPermissions: true,
+          cwd: this.config.cwd,
+          maxBudgetUsd: this.config.maxBudgetUsd,
+        },
+      })) {
         if (message.type === 'system' && 'session_id' in message) {
           this.sessionId = message.session_id;
         }
@@ -59,13 +81,8 @@ export class CodeReviewAgent {
 
       const result: ReviewResult = {
         status: this.determineStatus(parsed.issues),
-        summary: this.buildSummary(parsed.issues, parsed.filesReviewed, parsed.prIntent),
-        prIntent: parsed.prIntent,
-        impactAnalysis: parsed.impactAnalysis,
+        summary: this.buildSummary(parsed.issues, parsed.filesReviewed),
         issues: this.filterIssuesBySeverity(parsed.issues),
-        edgeCases: parsed.edgeCases,
-        missingTests: parsed.missingTests,
-        missingDocumentation: parsed.missingDocumentation,
         positives: parsed.positives,
         recommendations: parsed.recommendations,
         filesReviewed: parsed.filesReviewed,
@@ -100,146 +117,57 @@ export class CodeReviewAgent {
   }
 
   private buildPrompt(target: string): string {
-    let prompt = 'You are an expert code reviewer. ';
+    let prompt =
+      'You are an expert code reviewer performing a comprehensive security and quality review.\n\n';
 
     // Add PR context if available
     if (this.config.prContext) {
       const pr = this.config.prContext;
-      prompt += '\n\n## Pull Request Context\n';
+      prompt += '## Pull Request Context\n';
       if (pr.title) {
-        prompt += `**Title**: ${pr.title}\n`;
+        prompt += `Title: ${pr.title}\n`;
       }
       if (pr.description) {
-        prompt += `**Description**: ${pr.description}\n`;
+        prompt += `Description: ${pr.description}\n`;
       }
-      if (pr.number) {
-        prompt += `**PR #**: ${pr.number}\n`;
-      }
-      if (pr.author) {
-        prompt += `**Author**: ${pr.author}\n`;
-      }
-      if (pr.branch && pr.baseBranch) {
-        prompt += `**Branch**: ${pr.branch} → ${pr.baseBranch}\n`;
-      }
-
-      // Include file diffs showing exact changes
-      if (pr.fileDiffs && pr.fileDiffs.length > 0) {
-        prompt += `\n**Changes Made** (${pr.fileDiffs.length} files):\n`;
-
-        for (const diff of pr.fileDiffs.slice(0, 15)) {
-          prompt += `\n### ${diff.filename} (${diff.status})\n`;
-          prompt += `+${diff.additions} -${diff.deletions} lines\n`;
-
-          if (diff.patch) {
-            prompt += '```diff\n';
-            prompt += diff.patch.substring(0, 2000);
-            if (diff.patch.length > 2000) {
-              prompt += '\n... (diff truncated, use Read tool to see full file)';
-            }
-            prompt += '\n```\n';
-          }
+      if (pr.changedFiles && pr.changedFiles.length > 0) {
+        prompt += `\nChanged files (${pr.changedFiles.length}):\n`;
+        for (const file of pr.changedFiles.slice(0, 15)) {
+          prompt += `- ${file}\n`;
         }
-
-        if (pr.fileDiffs.length > 15) {
-          prompt += `\n... and ${pr.fileDiffs.length - 15} more files (use Glob/Read to explore)\n`;
-        }
-      } else if (pr.changedFiles) {
-        prompt += `\n**Changed Files**: ${pr.changedFiles.join(', ')}\n`;
       }
+      prompt += '\n';
+    }
 
+    prompt += `Target: ${target}\n\n`;
+    prompt += 'Analyze the codebase for:\n';
+    prompt +=
+      '1. Security vulnerabilities (SQL injection, XSS, SSRF, hardcoded secrets, authorization bypasses)\n';
+    prompt += '2. Potential bugs (null references, type errors, logic errors, race conditions)\n';
+    prompt += '3. Performance issues (inefficient loops, memory leaks, N+1 queries)\n';
+    prompt += '4. Missing error handling and edge cases\n';
+    prompt += '5. Code quality and best practices\n\n';
+
+    if (this.config.prContext?.changedFiles) {
       prompt +=
-        '\n**Your Task**: Review the diffs above. Understand what this PR is trying to achieve, verify it works correctly, and check for:\n';
-      prompt += '- Security vulnerabilities in the changed lines\n';
-      prompt += '- Bugs or logic errors in the modifications\n';
-      prompt += '- Impact on files that import/use the changed code\n';
-      prompt += '- Missing tests for the new/changed functionality\n';
-      prompt += '- Edge cases not handled by the changes\n\n';
+        'PRIORITY: Focus on the changed files listed above, then analyze their impact on the project.\n\n';
     }
 
-    const rules = this.config.rules || [];
-    const enabledRules = rules.filter((r) => r.enabled);
-
-    prompt += `\n## Review Task
-
-Perform a comprehensive code review of: ${target}
-
-Focus on:
-1. Security vulnerabilities (SQL injection, XSS, SSRF, authorization bypasses, hardcoded secrets)
-2. Potential bugs (null references, type errors, logic errors, race conditions)
-3. Performance issues (inefficient loops, memory leaks, N+1 queries)
-4. Missing error handling and edge cases
-5. Code quality and best practices
-
-${
-  enabledRules.length > 0
-    ? `\nApply these rules:\n${enabledRules.map((r) => `- [${r.severity.toUpperCase()}] ${r.name}: ${r.description}`).join('\n')}`
-    : ''
-}
-
-${
-  this.config.prContext?.changedFiles
-    ? `\n**Priority**: Focus on changed files: ${this.config.prContext.changedFiles.join(', ')}, but also analyze their impact on the project.`
-    : ''
-}
-
-Use Glob and Read tools to explore the codebase. Review up to ${this.config.maxFiles || 30} files.
-
-Provide findings in JSON format:
-\`\`\`json
-{
-  "prIntent": "What this PR aims to achieve (if applicable)",
-  "summary": "Overall assessment",
-  "impactAnalysis": {
-    "breakingChanges": [],
-    "affectedFiles": [],
-    "integrationImpact": "description",
-    "performanceImpact": "description",
-    "securityImpact": "description"
-  },
-  "issues": [
-    {
-      "severity": "HIGH|MEDIUM|LOW|INFO",
-      "category": "Security|Performance|Bug|Code Quality",
-      "file": "path/to/file.ts",
-      "line": 42,
-      "description": "Issue description",
-      "recommendation": "How to fix"
-    }
-  ],
-  "edgeCases": [{"scenario": "edge case", "handled": false, "recommendation": "fix"}],
-  "missingTests": ["test scenarios needed"],
-  "missingDocumentation": ["docs to add"],
-  "positives": ["good practices found"],
-  "recommendations": ["prioritized improvements"],
-  "filesReviewed": ["files", "reviewed"]
-}
-\`\`\`
-
-Begin the review now.`;
+    prompt += `Use Glob and Read tools to explore. Review up to ${this.config.maxFiles || 50} files.\n\n`;
+    prompt += 'Provide findings in JSON format:\n';
+    prompt += '{\n';
+    prompt += `  "summary": { "totalIssues": 0, "high": 0, "medium": 0, "low": 0, "positiveFindings": [], "recommendations": [] },\n`;
+    prompt += `  "issues": [{ "severity": "HIGH|MEDIUM|LOW|INFO", "category": "Security|Performance|Bug", "file": "path.ts", "line": 1, "description": "issue", "recommendation": "fix" }],\n`;
+    prompt += `  "filesReviewed": []\n`;
+    prompt += '}\n\n';
+    prompt += 'Begin the review now.';
 
     return prompt;
   }
 
-  private buildOptions(): Options {
-    return {
-      allowedTools: ['Read', 'Glob', 'Grep'],
-      permissionMode: 'bypassPermissions',
-      allowDangerouslySkipPermissions: true,
-      model: this.config.model,
-      maxBudgetUsd: this.config.maxBudgetUsd,
-      cwd: this.config.cwd,
-    };
-  }
-
   private parseResults(resultText: string): {
-    summary?: string;
-    prIntent?: string;
-    impactAnalysis?: ImpactAnalysis;
     issues: ReviewIssue[];
     filesReviewed: string[];
-    edgeCases?: EdgeCase[];
-    missingTests?: string[];
-    missingDocumentation?: string[];
     positives?: string[];
     recommendations?: string[];
   } {
@@ -249,37 +177,29 @@ Begin the review now.`;
         const parsed = JSON.parse(jsonMatch[0]);
 
         const issues = (parsed.issues || []).map((issue: Record<string, unknown>) => ({
-          ruleId: (issue.ruleId as string) || 'general',
+          ruleId: 'general',
           severity: this.mapSeverity((issue.severity as string) || 'INFO'),
           category: this.mapCategory((issue.category as string) || ''),
           filePath: (issue.file as string) || (issue.filePath as string) || 'unknown',
           line: issue.line as number | undefined,
-          message: (issue.description as string) || (issue.message as string),
+          message: (issue.description as string) || (issue.message as string) || '',
           suggestion: (issue.recommendation as string) || (issue.suggestion as string),
-          impact: issue.impact as string | undefined,
         }));
 
         return {
-          summary: parsed.summary as string | undefined,
-          prIntent: parsed.prIntent as string | undefined,
-          impactAnalysis: parsed.impactAnalysis as ImpactAnalysis | undefined,
           issues,
           filesReviewed: (parsed.filesReviewed as string[]) || [],
-          edgeCases: parsed.edgeCases as EdgeCase[] | undefined,
-          missingTests: parsed.missingTests as string[] | undefined,
-          missingDocumentation: parsed.missingDocumentation as string[] | undefined,
-          positives: (parsed.positiveFindings as string[]) || (parsed.positives as string[]),
-          recommendations: parsed.recommendations as string[] | undefined,
+          positives:
+            (parsed.summary?.positiveFindings as string[]) || (parsed.positiveFindings as string[]),
+          recommendations:
+            (parsed.summary?.recommendations as string[]) || (parsed.recommendations as string[]),
         };
       }
     } catch (_error) {
-      logger.warn('Failed to parse JSON, returning empty results');
+      logger.warn('Failed to parse JSON');
     }
 
-    return {
-      issues: [],
-      filesReviewed: [],
-    };
+    return { issues: [], filesReviewed: [] };
   }
 
   private mapSeverity(severity: string): IssueSeverity {
@@ -297,10 +217,7 @@ Begin the review now.`;
   }
 
   private mapCategory(category: string): ReviewCategory {
-    if (!category) {
-      return 'best-practices';
-    }
-    const cat = category.toLowerCase();
+    const cat = (category || '').toLowerCase();
     if (cat.includes('security')) {
       return 'security';
     }
@@ -309,15 +226,6 @@ Begin the review now.`;
     }
     if (cat.includes('bug')) {
       return 'bugs';
-    }
-    if (cat.includes('maintain')) {
-      return 'maintainability';
-    }
-    if (cat.includes('doc')) {
-      return 'documentation';
-    }
-    if (cat.includes('style')) {
-      return 'style';
     }
     return 'best-practices';
   }
@@ -348,22 +256,12 @@ Begin the review now.`;
     return 'success';
   }
 
-  private buildSummary(issues: ReviewIssue[], filesReviewed: string[], prIntent?: string): string {
+  private buildSummary(issues: ReviewIssue[], filesReviewed: string[]): string {
     const criticalCount = issues.filter((i) => i.severity === 'critical').length;
     const errorCount = issues.filter((i) => i.severity === 'error').length;
     const warningCount = issues.filter((i) => i.severity === 'warning').length;
 
-    let summary = '';
-
-    if (prIntent) {
-      summary += `PR Intent: ${prIntent}\n\n`;
-    }
-
-    summary += `Reviewed ${filesReviewed.length} file(s). `;
-    summary += `Found ${issues.length} issue(s): `;
-    summary += `${criticalCount} critical, ${errorCount} errors, ${warningCount} warnings.`;
-
-    return summary;
+    return `Reviewed ${filesReviewed.length} file(s). Found ${issues.length} issue(s): ${criticalCount} critical, ${errorCount} errors, ${warningCount} warnings.`;
   }
 
   private countBySeverity(issues: ReviewIssue[]): Record<IssueSeverity, number> {

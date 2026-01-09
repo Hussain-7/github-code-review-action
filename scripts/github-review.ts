@@ -11,6 +11,14 @@ import * as fs from 'node:fs';
 
 async function runGitHubReview() {
   try {
+    // Validate API key is set
+    if (!process.env.ANTHROPIC_API_KEY) {
+      core.setFailed('ANTHROPIC_API_KEY environment variable is not set');
+      return;
+    }
+
+    core.info('✅ API key verified');
+
     const context = github.context;
     const pr = context.payload.pull_request;
 
@@ -77,12 +85,17 @@ async function runGitHubReview() {
 
     // Run review on the PR code (not the review agent code!)
     core.info('⚙️  Running comprehensive code review...');
+    core.info(`   Target: ${target}`);
+    core.info(`   Working directory: ${prRepoDir}`);
+    core.info(`   Max budget: $${maxBudget}`);
+
     const agent = new CodeReviewAgent({
       prContext,
       maxBudgetUsd: maxBudget,
       maxFiles: 50,
       severityThreshold: severityThreshold as 'info' | 'warning' | 'error' | 'critical',
       cwd: prRepoDir, // Point to the PR repository, not /tmp/review-agent
+      verbose: true, // Enable verbose logging to debug
     });
 
     const result = await agent.review(target);

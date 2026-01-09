@@ -67,7 +67,15 @@ jobs:
           INPUT_SEVERITY-THRESHOLD: 'warning'
           INPUT_COMMENT-ON-PR: 'true'
           INPUT_FAIL-ON-CRITICAL: 'true'
-        run: cd /tmp/review-agent && npm run github-review
+        run: |
+          echo "📂 Verifying directories..."
+          echo "Current dir: $(pwd)"
+          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          echo "PR code files:"
+          ls -la $GITHUB_WORKSPACE | head -20
+          echo ""
+          echo "🚀 Starting review..."
+          cd /tmp/review-agent && npm run github-review
 
       - name: Upload Review Report
         if: always()
