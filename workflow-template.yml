@@ -1,16 +1,15 @@
-# AI Code Review Workflow Template
+# AI Code Review Workflow
 #
-# Copy this file to your repository as: .github/workflows/ai-code-review.yml
+# This workflow runs AI-powered code review on PRs using the code-review-agent
+# Automatically extracts PR context and analyzes project-wide impact
 #
 # Requirements:
-# 1. Add ANTHROPIC_API_KEY to your repository secrets (Settings → Secrets → Actions)
-# 2. That's it!
+# - ANTHROPIC_API_KEY secret must be set in repository settings
 #
-# The agent automatically extracts:
-# - PR title, description, number, author
-# - Changed files with exact diffs (lines added/removed)
-# - Branch information
-# - Then analyzes project-wide impact
+# Setup Instructions:
+# 1. Copy this file to: .github/workflows/ai-code-review.yml in your repository
+# 2. Add ANTHROPIC_API_KEY to repository secrets (Settings → Secrets → Actions)
+# 3. Push and create a PR - Done!
 
 name: AI Code Review
 
@@ -38,7 +37,7 @@ jobs:
       - name: Checkout PR Code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.event.issue.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -51,18 +50,19 @@ jobs:
 
       - name: Clone and Setup Code Review Agent
         run: |
+          # Clone the code review agent repository
           git clone https://github.com/Hussain-7/code-review-agent.git /tmp/review-agent
           cd /tmp/review-agent
-          npm install
-          npm run build
+          npm install --legacy-peer-deps
           npm install -g tsx
+          npm run build
 
       - name: Run AI Code Review
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_WORKSPACE: ${{ github.workspace }}
-          INPUT_TARGET: './src'
+          INPUT_TARGET: '.'
           INPUT_MAX-BUDGET: '5.0'
           INPUT_SEVERITY-THRESHOLD: 'warning'
           INPUT_COMMENT-ON-PR: 'true'
@@ -73,7 +73,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: code-review-report
+          name: code-review-report-${{ github.event.pull_request.number || github.event.issue.number }}
           path: |
             review-report.md
             review-result.json

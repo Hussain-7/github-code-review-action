@@ -68,7 +68,7 @@ async function runGitHubReview() {
     // Get configuration
     const maxBudget = Number.parseFloat(core.getInput('max-budget') || '5.0');
     const severityThreshold = core.getInput('severity-threshold') || 'warning';
-    const target = core.getInput('target') || './src';
+    const target = core.getInput('target') || '.'; // Default: review entire repo
 
     // Get the PR repository directory (where the code to review is)
     const prRepoDir = process.env.GITHUB_WORKSPACE || process.cwd();
