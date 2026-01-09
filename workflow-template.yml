@@ -51,7 +51,7 @@ jobs:
       - name: Clone and Setup Code Review Agent
         run: |
           # Clone the code review agent repository
-          git clone https://github.com/Hussain-7/code-review-agent.git /tmp/review-agent
+          git clone https://github.com/Hussain-7/github-code-review-action.git /tmp/review-agent
           cd /tmp/review-agent
           npm install --legacy-peer-deps
           npm install -g tsx
